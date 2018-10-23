@@ -8,6 +8,7 @@ RUN apt-get install git
 
 RUN pip install --upgrade keras
 RUN pip install mrcnn
+RUN pip install kaggle
 
 # TensorBoard
 EXPOSE 6006
