@@ -4,6 +4,8 @@ RUN apt-get update
 
 RUN apt-get install -y python-opencv
 
+RUN apt-get install git
+
 RUN pip install --upgrade keras
 RUN pip install mrcnn
 
