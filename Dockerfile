@@ -1,6 +1,15 @@
 FROM tensorflow/tensorflow
 
-RUN sudo apt-get install python-opencv
-RUN sudo pip install --upgrade keras
-RUN sudo pip install mrcnn
+RUN apt-get update
 
+RUN apt-get install -y python-opencv
+
+RUN pip install --upgrade keras
+RUN pip install mrcnn
+
+# TensorBoard
+EXPOSE 6006
+# IPython
+EXPOSE 8888
+
+ENTRYPOINT ["/run_jupyter.sh", "--allow-root"]
