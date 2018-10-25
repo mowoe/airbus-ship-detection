@@ -7,16 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1T5KrXZneJjvQAxIFVxo5MH0WHXd2gZpR
 """
 
-!pip install --upgrade keras
-
-!pip uninstall mrcnn
-!git clone https://github.com/matterport/Mask_RCNN.git
-!cd Mask_RCNN && python3 setup.py install
-
-!wget https://raw.githubusercontent.com/matterport/Mask_RCNN/master/mrcnn/model.py -O /usr/local/lib/python3.6/dist-packages/mrcnn/model.py
-
-"""# NOW RESTART RUNTIME!"""
-
 !pip install -q kaggle
 import time
 import zipfile
@@ -24,15 +14,9 @@ import os
 import json
 import cv2
 import keras
-import os
-
-keras.__version__
 
 from google.colab import files
 files.upload()
-
-ROOT_DIR = os.path.abspath("/content/")
-MODEL_DIR = os.path.join(ROOT_DIR, "logs")
 
 !mkdir -p ~/.kaggle
 !cp kaggle.json ~/.kaggle/
@@ -42,21 +26,61 @@ start = time.time()
 !kaggle competitions download airbus-ship-detection
 print("downloading dataset took {} seconds".format(time.time()-start))
 
+download_sample_submissions = "0" #@param ["0","1"]
+if download_sample_submissions == "1":
+  from google.colab import files
+  files.download("/content/sample_submission_v2.csv")
+
+import zipfile
+!mkdir -p /contents/test_v2
+zip_ref = zipfile.ZipFile("/content/test_v2.zip", 'r')
+zip_ref.extractall("/contents/test_v2")
+zip_ref.close()
+!mkdir -p /contents/train_v2
+zip_ref = zipfile.ZipFile("/content/test_v2.zip",, 'r')
+zip_ref.extractall("/contents/train_v2")
+zip_ref.close()
+zip_ref = zipfile.ZipFile("/content/train_ship_segmentations_v2.csv.zip", 'r')
+zip_ref.extractall("/contents/")
+zip_ref.close()
+
 for file in ["/content/test_v2.zip","/content/train_v2.zip","/content/train_ship_segmentations_v2.csv.zip"]:
     zip_ref = zipfile.ZipFile(file, 'r')
     zip_ref.extractall()
     zip_ref.close()
-    print(file)
 
 import PIL
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-df = pd.read_csv("/content/train_ship_segmentations_v2.csv").dropna()
-df.index = np.arange(0, len(df))
-display(df[:10])
-print(df.ImageId[0])
+df = pd.read_csv("/content/train_ship_segmentations_v2.csv", index_col=0).dropna()
+display(df.head())
+df['EncodedPixels']['000155de5.jpg']
+
+rle = [int(i) for i in df['EncodedPixels']['000155de5.jpg'].split()]
+# turn list of ints into a list of (`start`, `length`) `pairs`
+pairs = list(zip(rle[0:-1:2], rle[1:-2:2])) 
+pairs[:3]
+
+start = pairs[0][0]
+print(f"Original start position: {start}")
+
+coordinate = (start % 768, start // 768)
+print(f"Maps to this coordinate: {coordinate}")
+
+back = 768 * coordinate[1] + coordinate[0]
+print(f"And back: {back}")
+
+def rle_to_pixels(rle_code):
+    '''
+    Transforms a RLE code string into a list of pixels of a (768, 768) canvas
+    '''
+    rle_code = [int(i) for i in rle_code.split()]
+    pixels = [(pixel_position % 768, pixel_position // 768) 
+                 for start, length in list(zip(rle_code[0:-1:2], rle_code[1:-2:2])) 
+                 for pixel_position in range(start, start + length)]
+    return pixels
 
 from skimage.segmentation import mark_boundaries
 from skimage.measure import label, regionprops
@@ -98,180 +122,29 @@ def rle_decode(mask_rle, shape=(768, 768)):
         img[lo:hi] = 1
     return img.reshape(shape).T  # Needed to align to RLE direction
 
-from mrcnn.config import Config
-from mrcnn import utils
-import mrcnn
-import mrcnn.model as modellib
-from mrcnn import visualize
-from mrcnn.model import log
-from tqdm import tqdm
+for i in range(1):
+    image = df.iloc[i].ImageId
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize = (15, 5))
+    img_0 = cv2.imread(image)
+    rle_0 = df.query('ImageId=="'+image+'"')['EncodedPixels']
+    mask_0 = masks_as_image(rle_0)
+    #
+    # 
+    lbl_0 = label(mask_0) 
+    props = regionprops(lbl_0)
+    img_1 = img_0.copy()
+    print ('Image', image)
+    for prop in props:
+        print('Found bbox', prop.bbox)
+        cv2.rectangle(img_1, (prop.bbox[1], prop.bbox[0]), (prop.bbox[3], prop.bbox[2]), (255, 0, 0), 2)
 
-only_ships_df = df[df.EncodedPixels.isnull()==False]
 
-class ShipsDatasetOne(mrcnn.utils.Dataset):
-  def load_dataset(self, dataset_frame, width, height):
-    self.dataset_frame = dataset_frame
-    self.add_class("ships", 1, "ship")
-    count = 0
-    for x in tqdm(dataset_frame.ImageId.unique()):
-      ships = []
-      for b in range(len(df.query('ImageId=="'+x+'"')['EncodedPixels'])):
-        ships.append("ship")
-      self.add_image("ships", image_id=count, path=x,
-                    width=width, height=height,
-                    ships=ships)
-      count+=1
-      
-  
-  def load_image(self,image_id):
-    info = self.image_info[image_id]
-    if info["id"] == image_id:
-      ships = info['ships']
-      filename = info['path']
-      image = cv2.imread("/content/"+filename)
-      return image
-    else:
-      print("FATAL ERROR! NOT MATHCING IDs")
-  
-  def load_mask(self,image_id):
-    info = self.image_info[image_id]
-    assert info["id"] == image_id
-    ships = info['ships']
-    filename = info['path']
-    rle_0 = df.query('ImageId=="'+filename+'"')['EncodedPixels']
-    mask = masks_as_image(rle_0) 
-    class_ids = np.array([self.class_names.index(s) for s in ships])
-    return mask.astype(np.bool), class_ids.astype(np.int32)
-  
-  def image_reference(self, image_id):
-    info = self.image_info[image_id]
-    return info['ships']
+    ax1.imshow(img_0)
+    ax1.set_title('Image')
+    ax2.set_title('Mask')
+    ax3.set_title('Image with derived bounding box')
+    ax2.imshow(mask_0[...,0], cmap='gray')
+    ax3.imshow(img_1)
+    plt.show()
 
-class ShipsDataset(mrcnn.utils.Dataset):
-  def load_dataset(self, dataset_frame, width, height, count, start=0):
-    self.add_class("shapes", 1, "square")
-    self.add_class("shapes", 2, "circle")
-    self.add_class("shapes", 3, "triangle")
-    dataset_frame.index = np.arange(0, count)
-    for i in range(start,count):
-      shapes = []
-      filename = dataset_frame.ImageId[i]
-      for b in range(len(df.query('ImageId=="'+filename+'"')['EncodedPixels'])):
-        shapes.append("square")
-      self.add_image("shapes", image_id=i, path=filename,
-                    width=width, height=height,
-                    shapes=shapes)
-      
-  
-  def load_image(self,image_id):
-    info = self.image_info[image_id]
-    assert info["id"] == image_id
-    filename = info['path']
-    image = cv2.imread("/content/"+filename,0)
-    return image
-    
-  
-  def load_mask(self,image_id):
-    info = self.image_info[image_id]
-    assert info["id"] == image_id
-    shapes = info['shapes']
-    filename = info['path']
-    rle_0 = df.query('ImageId=="'+filename+'"')['EncodedPixels']
-    mask = masks_as_image(rle_0) 
-    class_ids = np.array([self.class_names.index(s) for s in shapes])
-    return mask.astype(np.bool), class_ids.astype(np.int32)
-  
-  def image_reference(self, image_id):
-    info = self.image_info[image_id]
-    if info["source"] == "shapes":
-        return info["shapes"]
-    else:
-        super(self.__class__).image_reference(self, image_id)
-
-dataset_train = ShipsDataset()
-dataset_train.load_dataset(only_ships_df[:1000],768,768,1000)
-
-dataset_val = ShipsDataset()
-dataset_val.load_dataset(only_ships_df[-1000:],768,768,1000)
-
-dataset_val.prepare()
-dataset_train.prepare()
-
-print(dataset_val.class_ids)
-print(dataset_val.image_info[0])
-mask, class_ids = dataset_train.load_mask(0)
-print(class_ids)
-print(mask.shape)
-
-image_ids = np.random.choice(dataset_train.image_ids, 4)
-for image_id in image_ids:
-    image = dataset_train.load_image(image_id)
-    mask, class_ids = dataset_train.load_mask(image_id)
-    visualize.display_top_masks(image, mask, class_ids, dataset_train.class_names)
-
-class ShapesConfig(Config):
-    """Configuration for training on the toy shapes dataset.
-    Derives from the base Config class and overrides values specific
-    to the toy shapes dataset.
-    """
-    # Give the configuration a recognizable name
-    NAME = "ships"
-
-    # Train on 1 GPU and 8 images per GPU. We can put multiple images on each
-    # GPU because the images are small. Batch size is 8 (GPUs * images/GPU).
-    GPU_COUNT = 1
-    IMAGES_PER_GPU = 8
-
-    # Number of classes (including background)
-    NUM_CLASSES = 1 + 1  # background + 3 ships
-
-    # Use small images for faster training. Set the limits of the small side
-    # the large side, and that determines the image shape.
-    IMAGE_MIN_DIM = 768
-    IMAGE_MAX_DIM = 768
-
-    # Use smaller anchors because our image and objects are small
-    #RPN_ANCHOR_SCALES = (8, 16, 32, 64, 128)  # anchor side in pixels
-
-    # Reduce training ROIs per image because the images are small and have
-    # few objects. Aim to allow ROI sampling to pick 33% positive ROIs.
-    TRAIN_ROIS_PER_IMAGE = 32
-
-    # Use a small epoch since the data is simple
-    STEPS_PER_EPOCH = 500
-
-    # use small validation steps since the epoch is small
-    VALIDATION_STEPS = 5
-    
-config = ShapesConfig()
-
-model = modellib.MaskRCNN(mode="training", config=config,
-                          model_dir=MODEL_DIR)
-
-# Which weights to start with?
-init_with = "coco"  # @param ["imagenet", "coco", "last"]
-
-if init_with == "imagenet":
-    model.load_weights(model.get_imagenet_weights(), by_name=True)
-elif init_with == "coco":
-    # Load weights trained on MS COCO, but skip layers that
-    # are different due to the different number of classes
-    # See README for instructions to download the COCO weights
-    !wget -O mask_rcnn_coco.h5 https://github.com/matterport/Mask_RCNN/releases/download/v2.0/mask_rcnn_coco.h5
-    COCO_MODEL_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
-    model.load_weights(COCO_MODEL_PATH, by_name=True,
-                       exclude=["mrcnn_class_logits", "mrcnn_bbox_fc", 
-                                "mrcnn_bbox", "mrcnn_mask"])
-elif init_with == "last":
-    # Load the last model you trained and continue training
-    model.load_weights(model.find_last(), by_name=True)
-
-# Train the head branches
-# Passing layers="heads" freezes all layers except the head
-# layers. You can also pass a regular expression to select
-# which layers to train by name pattern.
-model.train(dataset_train, dataset_test, 
-            learning_rate=config.LEARNING_RATE, 
-            epochs=1, 
-            layers='heads')
-
+!ls sample_data
