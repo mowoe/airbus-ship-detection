@@ -35,4 +35,7 @@ EXPOSE 6006
 # IPython
 EXPOSE 8888
 
+ADD Airbus_Ship_Detection.ipynb /notebooks/Airbus_Ship_Detection.ipynb
+ADD airbus_ship_detection.py /notebooks/airbus_ship_detection.py 
+
 ENTRYPOINT ["/run_jupyter.sh", "--allow-root"]
