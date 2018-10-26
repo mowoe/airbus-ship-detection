@@ -1,15 +1,15 @@
-FROM tensorflow/tensorflow
+FROM tensorflow/tensorflow:latest-gpu
 
 RUN apt-get update
 
 RUN apt-get install -y python-opencv
 
-RUN apt-get install ipython3
-RUN apt-get install git
-RUN apt install python-zmq
-RUN apt-get install python3-pip
-RUN apt install python-urllib3
-RUN apt-get install wget
+RUN apt-get install -y ipython3
+RUN apt-get install -y git
+RUN apt install -y python-zmq
+RUN apt-get install -y python3-pip
+RUN apt install -y python-urllib3
+RUN apt-get -y install wget
 
 RUN python3 -m pip install --upgrade pip
 
