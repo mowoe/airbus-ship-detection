@@ -28,7 +28,7 @@ RUN python3 -m pip  install scikit-image
 RUN python3 -m pip  install mrcnn
 
 RUN python3 -m pip install opencv-python
-RUN python3 -m pip install ipykernel
+RUN python3 -m pip install --ignore-installed ipykernel
 RUN python3 -m ipykernel install --user
 # TensorBoard
 EXPOSE 6006
