@@ -20,7 +20,6 @@ RUN pip install scikit-image
 
 RUN python3 -m pip  install kaggle
 RUN python3 -m pip  install --upgrade keras
-RUN python3 -m pip  install tensorflow-gpu
 RUN python3 -m pip  install pillow
 RUN python3 -m pip  install pandas
 RUN python3 -m pip  install matplotlib
