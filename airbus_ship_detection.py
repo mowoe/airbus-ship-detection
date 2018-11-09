@@ -20,7 +20,7 @@ import keras
 
 keras.__version__
 
-key = input("Please put your Kaggle credentials in JSON format in")
+key = input("Please put your Kaggle credentials in JSON format in: ")
 with open("kaggle.json", "w") as f:
     f.write(key)
 
